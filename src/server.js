@@ -4,7 +4,7 @@ const cors = require('cors');
 const app = express();
 
 // Import validation functions
-const { validateSyntax, validateDNS } = require('./utils/emailValidator');
+const { validateSyntax, validateDNS, isDisposable } = require('./utils/emailValidator');
 
 // Middleware
 app.use(cors());
@@ -54,34 +54,37 @@ app.post('/api/v1/validate', async (req, res) => {
       });
     }
 
-    // Run DNS validation
-    const dnsResult = await validateDNS(email);
+    // Run DNS validation and disposable check in parallel
+    const [dnsResult, disposable] = await Promise.all([
+      validateDNS(email),
+      isDisposable(email)
+    ]);
 
-    // Calculate score
+    // Calculate score (out of 120, then normalize)
     let score = 0;
-    if (syntaxValid) score += 25;
-    if (dnsResult.dns) score += 25;
-    if (dnsResult.mx_records) score += 50;
+    if (syntaxValid) score += 20;
+    if (dnsResult.dns) score += 20;
+    if (dnsResult.mx_records) score += 40;
+    if (!disposable) score += 20;
 
     // Build response
     const response = {
       success: true,
       data: {
         email: email,
-        valid: syntaxValid && dnsResult.dns && dnsResult.mx_records,
+        valid: syntaxValid && dnsResult.dns && dnsResult.mx_records && !disposable,
         score: score,
         details: {
           syntax: syntaxValid,
           dns: dnsResult.dns,
           mx_records: dnsResult.mx_records,
-          disposable: null, // Will add in Function 3
+          disposable: disposable,
           role_based: null // Will add in Function 4
         }
       }
     };
-
+    
     res.status(200).json(response);
-
   } catch (error) {
     console.error('Validation error:', error);
     res.status(500).json({
