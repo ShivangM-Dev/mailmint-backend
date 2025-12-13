@@ -4,7 +4,11 @@ const cors = require('cors');
 const app = express();
 
 // Import validation functions
-const { validateSyntax, validateDNS, isDisposable } = require('./utils/emailValidator');
+const { validateSyntax, validateDNS, isDisposable, isRoleBased } = require('./utils/emailValidator');
+
+// Import API key middleware and service
+const { apiKeyAuth } = require('./middleware/apiKeyAuth');
+const { deductCredit, logUsage } = require('./services/apiKeyService');
 
 // Middleware
 app.use(cors());
@@ -19,8 +23,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Main validation endpoint
-app.post('/api/v1/validate', async (req, res) => {
+// Main validation endpoint (protected with API key)
+app.post('/api/v1/validate', apiKeyAuth, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -54,10 +58,11 @@ app.post('/api/v1/validate', async (req, res) => {
       });
     }
 
-    // Run DNS validation and disposable check in parallel
-    const [dnsResult, disposable] = await Promise.all([
+    // Run DNS validation, disposable check, and role-based check in parallel
+    const [dnsResult, disposable, roleBased] = await Promise.all([
       validateDNS(email),
-      isDisposable(email)
+      isDisposable(email),
+      Promise.resolve(isRoleBased(email))
     ]);
 
     // Calculate score (out of 120, then normalize)
@@ -66,23 +71,28 @@ app.post('/api/v1/validate', async (req, res) => {
     if (dnsResult.dns) score += 20;
     if (dnsResult.mx_records) score += 40;
     if (!disposable) score += 20;
+    if (!roleBased) score += 20;
 
     // Build response
     const response = {
       success: true,
       data: {
         email: email,
-        valid: syntaxValid && dnsResult.dns && dnsResult.mx_records && !disposable,
+        valid: syntaxValid && dnsResult.dns && dnsResult.mx_records && !disposable && !roleBased,
         score: score,
         details: {
           syntax: syntaxValid,
           dns: dnsResult.dns,
           mx_records: dnsResult.mx_records,
           disposable: disposable,
-          role_based: null // Will add in Function 4
+          role_based: roleBased
         }
       }
     };
+    
+    // Deduct credit and log usage
+    await deductCredit(req.apiKeyData.id);
+    await logUsage(req.apiKeyData.id, email, response.data);
     
     res.status(200).json(response);
   } catch (error) {

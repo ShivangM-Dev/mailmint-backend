@@ -64,8 +64,50 @@ async function validateDNS(email) {
   }
 }
 
+/**
+ * Checks if email is role-based (generic business emails)
+ * @param {string} email - Email address to check
+ * @returns {boolean} - True if role-based, false otherwise
+ */
+function isRoleBased(email) {
+  if (!email || typeof email !== 'string') {
+    return false;
+  }
+
+  // Extract local part (before @)
+  const parts = email.split('@');
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const localPart = parts[0].toLowerCase();
+
+  // Common role-based email prefixes
+  const rolePrefixes = [
+    'admin', 'administrator',
+    'info', 'information',
+    'support', 'help', 'helpdesk',
+    'sales', 'marketing',
+    'contact', 'hello', 'hi',
+    'office', 'team',
+    'billing', 'accounts', 'accounting',
+    'hr', 'careers', 'jobs', 'recruiting',
+    'noreply', 'no-reply', 'donotreply',
+    'service', 'services',
+    'webmaster', 'hostmaster', 'postmaster',
+    'abuse', 'security',
+    'legal', 'privacy',
+    'press', 'media', 'pr',
+    'feedback', 'suggestions'
+  ];
+
+  // Check if local part matches any role prefix exactly
+  return rolePrefixes.includes(localPart);
+}
+
 module.exports = { 
   validateSyntax, 
   validateDNS, 
-  isDisposable 
+  isDisposable,
+  isRoleBased 
 };
