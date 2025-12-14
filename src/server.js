@@ -2,19 +2,22 @@ const PORT = process.env.PORT || 8000;
 const express = require('express');
 const cors = require('cors');
 const app = express();
-
-// Import validation functions
+const pool = require('./config/database');
 const { validateSyntax, validateDNS, isDisposable, isRoleBased } = require('./utils/emailValidator');
-
-// Import API key middleware and service
-const { apiKeyAuth } = require('./middleware/apiKeyAuth');
-const { deductCredit, logUsage } = require('./services/apiKeyService');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('❌ Database connection failed:', err);
+  } else {
+    console.log('✅ Database connected at:', res.rows[0].now);
+  }
+});
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
@@ -23,8 +26,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Main validation endpoint (protected with API key)
-app.post('/api/v1/validate', apiKeyAuth, async (req, res) => {
+// Main validation endpoint
+app.post('/api/v1/validate', async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -89,10 +92,6 @@ app.post('/api/v1/validate', apiKeyAuth, async (req, res) => {
         }
       }
     };
-    
-    // Deduct credit and log usage
-    await deductCredit(req.apiKeyData.id);
-    await logUsage(req.apiKeyData.id, email, response.data);
     
     res.status(200).json(response);
   } catch (error) {
