@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "test": "vitest run",
+    "start":"node src/server.js",
     "test:watch": "vitest watch",
     "dev": "nodemon src/server.js"
   },
