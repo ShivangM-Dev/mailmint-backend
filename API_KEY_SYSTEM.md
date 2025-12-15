@@ -9,9 +9,9 @@ The API key system provides secure authentication for API requests, tracks usage
 ## Components
 
 ### 1. API Key Generator (`src/utils/apiKeyGenerator.js`)
-- Uses `crypto.randomBytes()` to generate cryptographically secure random API keys
-- Keys are 64 hex characters long with an `mk_` prefix (e.g., `mk_a1b2c3d4...`)
-- Format: `mk_<64-character-hex-string>`
+- Uses `crypto.randomBytes()` with a Base62 alphabet plus checksum
+- Keys are structured with environment and checksum for quick format validation
+- Format: `mmk_<env>_<random>_<checksum>` (env = `live` or `test`)
 
 ### 2. API Key Service (`src/services/apiKeyService.js`)
 Provides functions for managing API keys:
@@ -63,7 +63,7 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ```sql
 id SERIAL PRIMARY KEY
 user_id INTEGER REFERENCES users(id) ON DELETE CASCADE
-api_key VARCHAR(64) UNIQUE NOT NULL
+api_key VARCHAR(128) UNIQUE NOT NULL
 plan_type VARCHAR(50) DEFAULT 'free'
 credits_remaining INTEGER DEFAULT 100
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -133,7 +133,12 @@ curl -X POST "http://localhost:8000/api/v1/validate?api_key=mk_abc123..." \
 
 ### Protected Endpoints
 
-The `/api/v1/validate` endpoint is now protected with API key authentication. All requests must include a valid API key.
+The `/api/v1/validate` endpoint is protected with API key authentication. All requests must include a valid API key. Each request deducts one credit and is logged, even when validation fails early (e.g., bad syntax).
+
+### Key Generation Notes
+- Keys validate format quickly (`mmk_live|test_<random>_<checksum>`)
+- Database schema stays the same (`VARCHAR(128)`), no migration needed
+- Collisions are retried on insert; up to 5 attempts before failing
 
 ## Security Features
 

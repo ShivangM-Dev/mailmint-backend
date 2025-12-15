@@ -2,8 +2,10 @@ const PORT = process.env.PORT || 8000;
 const express = require('express');
 const cors = require('cors');
 const app = express();
-const pool = require('./config/database');
+const pool = require('./database/database');
 const { validateSyntax, validateDNS, isDisposable, isRoleBased } = require('./utils/emailValidator');
+const { apiKeyAuth } = require('./middleware/apiKeyAuth');
+const { deductCredit, logUsage } = require('./services/apiKeyService');
 
 // Middleware
 app.use(cors());
@@ -26,8 +28,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Main validation endpoint
-app.post('/api/v1/validate', async (req, res) => {
+// Main validation endpoint (protected by API key)
+app.post('/api/v1/validate', apiKeyAuth, async (req, res) => {
   try {
     const { email } = req.body;
 
@@ -44,7 +46,7 @@ app.post('/api/v1/validate', async (req, res) => {
 
     // If syntax is invalid, no need to check DNS
     if (!syntaxValid) {
-      return res.status(200).json({
+      const responsePayload = {
         success: true,
         data: {
           email: email,
@@ -58,7 +60,22 @@ app.post('/api/v1/validate', async (req, res) => {
             role_based: null
           }
         }
-      });
+      };
+
+      // Log usage and attempt credit deduction even for invalid syntax
+      const [deducted] = await Promise.all([
+        deductCredit(req.apiKeyData.id),
+        logUsage(req.apiKeyData.id, email, responsePayload.data)
+      ]);
+
+      if (!deducted) {
+        return res.status(402).json({
+          success: false,
+          error: 'Insufficient credits'
+        });
+      }
+
+      return res.status(200).json(responsePayload);
     }
 
     // Run DNS validation, disposable check, and role-based check in parallel
@@ -77,7 +94,7 @@ app.post('/api/v1/validate', async (req, res) => {
     if (!roleBased) score += 20;
 
     // Build response
-    const response = {
+    const responsePayload = {
       success: true,
       data: {
         email: email,
@@ -92,8 +109,20 @@ app.post('/api/v1/validate', async (req, res) => {
         }
       }
     };
-    
-    res.status(200).json(response);
+    // Deduct credit and log usage. Logging failures are non-blocking inside service.
+    const [deducted] = await Promise.all([
+      deductCredit(req.apiKeyData.id),
+      logUsage(req.apiKeyData.id, email, responsePayload.data)
+    ]);
+
+    if (!deducted) {
+      return res.status(402).json({
+        success: false,
+        error: 'Insufficient credits'
+      });
+    }
+
+    res.status(200).json(responsePayload);
   } catch (error) {
     console.error('Validation error:', error);
     res.status(500).json({

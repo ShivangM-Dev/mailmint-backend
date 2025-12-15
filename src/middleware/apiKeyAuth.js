@@ -37,17 +37,23 @@ async function apiKeyAuth(req, res, next) {
     }
     
     // Validate the API key
-    const keyData = await validateApiKey(apiKey);
+    const validation = await validateApiKey(apiKey);
     
-    if (!keyData) {
+    if (!validation.ok) {
+      const messageMap = {
+        invalid_format: 'Invalid API key format.',
+        not_found: 'API key not found.',
+        inactive: 'API key is inactive.'
+      };
+      const errorMessage = messageMap[validation.reason] || 'API key is invalid.';
       return res.status(401).json({
         success: false,
-        error: 'Invalid or inactive API key, or insufficient credits.'
+        error: errorMessage
       });
     }
     
     // Attach key data to request object for use in route handlers
-    req.apiKeyData = keyData;
+    req.apiKeyData = validation.keyData;
     
     next();
   } catch (error) {

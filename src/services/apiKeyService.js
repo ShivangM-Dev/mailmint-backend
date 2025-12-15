@@ -1,13 +1,16 @@
 const pool = require('../database/database');
-const { generateApiKey } = require('../utils/apiKeyGenerator');
+const { generateApiKey, isApiKeyFormat } = require('../utils/apiKeyGenerator');
 
 /**
- * Validate an API key from the database
- * @param {string} apiKey - The API key to validate
- * @returns {Promise<Object|null>} - Returns the API key record if valid, null otherwise
+ * Validate an API key from the database.
+ * Returns an object with ok flag and reason for better error handling.
  */
 async function validateApiKey(apiKey) {
   try {
+    if (!isApiKeyFormat(apiKey)) {
+      return { ok: false, reason: 'invalid_format' };
+    }
+
     const query = `
       SELECT 
         api_keys.id,
@@ -16,26 +19,27 @@ async function validateApiKey(apiKey) {
         api_keys.plan_type,
         api_keys.credits_remaining,
         api_keys.is_active,
+        api_keys.created_at,
         users.email as user_email
       FROM api_keys
       JOIN users ON api_keys.user_id = users.id
-      WHERE api_keys.api_key = $1 AND api_keys.is_active = true
+      WHERE api_keys.api_key = $1
+      LIMIT 1
     `;
     
     const result = await pool.query(query, [apiKey]);
     
     if (result.rows.length === 0) {
-      return null;
+      return { ok: false, reason: 'not_found' };
     }
     
     const keyData = result.rows[0];
     
-    // Check if credits are available
-    if (keyData.credits_remaining <= 0) {
-      return null;
+    if (!keyData.is_active) {
+      return { ok: false, reason: 'inactive' };
     }
     
-    return keyData;
+    return { ok: true, keyData };
   } catch (error) {
     console.error('Error validating API key:', error);
     throw error;
@@ -43,28 +47,40 @@ async function validateApiKey(apiKey) {
 }
 
 /**
- * Create a new API key for a user
+ * Create a new API key for a user with retries on collisions.
  * @param {number} userId - The user ID
  * @param {string} planType - The plan type (default 'free')
  * @param {number} credits - Initial credits (default 100)
+ * @param {Object} options - { environment?: 'live' | 'test' }
  * @returns {Promise<string>} - The generated API key
  */
-async function createApiKey(userId, planType = 'free', credits = 100) {
-  try {
-    const apiKey = generateApiKey();
-    
-    const query = `
-      INSERT INTO api_keys (user_id, api_key, plan_type, credits_remaining)
-      VALUES ($1, $2, $3, $4)
-      RETURNING api_key
-    `;
-    
-    const result = await pool.query(query, [userId, apiKey, planType, credits]);
-    return result.rows[0].api_key;
-  } catch (error) {
-    console.error('Error creating API key:', error);
-    throw error;
+async function createApiKey(userId, planType = 'free', credits = 100, options = {}) {
+  const maxAttempts = 5;
+  const { environment = 'live' } = options;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const apiKey = generateApiKey({ environment });
+
+    try {
+      const query = `
+        INSERT INTO api_keys (user_id, api_key, plan_type, credits_remaining)
+        VALUES ($1, $2, $3, $4)
+        RETURNING api_key
+      `;
+      
+      const result = await pool.query(query, [userId, apiKey, planType, credits]);
+      return result.rows[0].api_key;
+    } catch (error) {
+      // Retry on unique constraint violations
+      if (error.code === '23505' && attempt < maxAttempts - 1) {
+        continue;
+      }
+      console.error('Error creating API key:', error);
+      throw error;
+    }
   }
+
+  throw new Error('Failed to generate a unique API key after multiple attempts');
 }
 
 /**
