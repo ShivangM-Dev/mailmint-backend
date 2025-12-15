@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
   api_key VARCHAR(128) UNIQUE NOT NULL,
   plan_type VARCHAR(50) DEFAULT 'free',
   credits_remaining INTEGER DEFAULT 100,
+  -- Source of this key: 'direct' (your website) or 'rapidapi'
+  source VARCHAR(50) DEFAULT 'direct' NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   is_active BOOLEAN DEFAULT true
 );

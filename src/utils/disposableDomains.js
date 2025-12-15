@@ -1,4 +1,6 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 // URLs to the disposable domains lists on GitHub
 const DISPOSABLE_LISTS = {
@@ -17,6 +19,42 @@ let cachedDomains = {
 let lastFetchTime = null;
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+const fallbackCachePath = path.join(__dirname, '..', '..', 'cache', 'disposable-domains.json');
+const CACHE_PATH = process.env.DISPOSABLE_CACHE_PATH || fallbackCachePath;
+
+function ensureCacheDir() {
+  const dir = path.dirname(CACHE_PATH);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function readDiskCache() {
+  try {
+    const stat = fs.statSync(CACHE_PATH);
+    if (Date.now() - stat.mtimeMs > CACHE_DURATION) {
+      return null;
+    }
+    const raw = fs.readFileSync(CACHE_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.generic) && Array.isArray(parsed.withDNS) && Array.isArray(parsed.sha1)) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function writeDiskCache(lists) {
+  try {
+    ensureCacheDir();
+    fs.writeFileSync(CACHE_PATH, JSON.stringify(lists), 'utf8');
+  } catch (err) {
+    console.warn('Unable to persist disposable domains cache:', err.message);
+  }
+}
+
 /**
  * Fetches a single disposable domains list
  * @param {string} url - URL to fetch from
@@ -24,7 +62,7 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
  */
 async function fetchList(url) {
   try {
-    const response = await axios.get(url, { timeout: 10000 });
+    const response = await axios.get(url, { timeout: 8000 });
     return response.data || [];
   } catch (error) {
     console.error(`Error fetching list from ${url}:`, error.message);
@@ -84,25 +122,47 @@ function combineLists(lists) {
  */
 async function getDisposableDomains() {
   const now = Date.now();
-  
-  // Return cached domains if still valid
-  if (cachedDomains.combined && lastFetchTime && (now - lastFetchTime) < CACHE_DURATION) {
+
+  // Allow overriding domain list for testing or offline mode
+  if (process.env.DISPOSABLE_DOMAINS_OVERRIDE) {
+    const domains = process.env.DISPOSABLE_DOMAINS_OVERRIDE.split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+    const combined = new Set(domains);
+    cachedDomains = {
+      generic: domains,
+      withDNS: [],
+      sha1: [],
+      combined
+    };
+    lastFetchTime = now;
+    return combined;
+  }
+
+  if (cachedDomains.combined && lastFetchTime && now - lastFetchTime < CACHE_DURATION) {
     return cachedDomains.combined;
   }
-  
-  // Fetch fresh lists
+
+  // Try disk cache first
+  const disk = readDiskCache();
+  if (disk) {
+    cachedDomains = {
+      ...disk,
+      combined: combineLists(disk),
+    };
+    lastFetchTime = now;
+    return cachedDomains.combined;
+  }
+
   const lists = await fetchAllDisposableDomains();
-  
-  // Combine and deduplicate
   const combined = combineLists(lists);
-  
-  // Update cache
+
   cachedDomains.generic = lists.generic;
   cachedDomains.withDNS = lists.withDNS;
   cachedDomains.sha1 = lists.sha1;
   cachedDomains.combined = combined;
   lastFetchTime = now;
-  
+
+  writeDiskCache(lists);
+
   return combined;
 }
 

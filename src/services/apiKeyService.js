@@ -51,24 +51,24 @@ async function validateApiKey(apiKey) {
  * @param {number} userId - The user ID
  * @param {string} planType - The plan type (default 'free')
  * @param {number} credits - Initial credits (default 100)
- * @param {Object} options - { environment?: 'live' | 'test' }
+ * @param {Object} options - { environment?: 'live' | 'test', source?: 'direct' | 'rapidapi' }
  * @returns {Promise<string>} - The generated API key
  */
 async function createApiKey(userId, planType = 'free', credits = 100, options = {}) {
   const maxAttempts = 5;
-  const { environment = 'live' } = options;
+  const { environment = 'live', source = 'direct' } = options;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const apiKey = generateApiKey({ environment });
 
     try {
       const query = `
-        INSERT INTO api_keys (user_id, api_key, plan_type, credits_remaining)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO api_keys (user_id, api_key, plan_type, credits_remaining, source)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING api_key
       `;
       
-      const result = await pool.query(query, [userId, apiKey, planType, credits]);
+      const result = await pool.query(query, [userId, apiKey, planType, credits, source]);
       return result.rows[0].api_key;
     } catch (error) {
       // Retry on unique constraint violations

@@ -5,7 +5,7 @@ const { createApiKey } = require('../services/apiKeyService');
  * Quick script to create a test user and API key.
  *
  * Usage:
- *   node src/scripts/createTestApiKey.js [email] [plan] [credits] [env]
+ *   node src/scripts/createTestApiKey.js [email] [plan] [credits] [env] [source]
  *
  * Defaults:
  *   email   -> test@example.com
@@ -14,11 +14,12 @@ const { createApiKey } = require('../services/apiKeyService');
  */
 async function createTestApiKey() {
   // Accept simple positional args for convenience
-  const [, , emailArg, planArg, creditsArg, envArg] = process.argv;
+  const [, , emailArg, planArg, creditsArg, envArg, sourceArg] = process.argv;
   const email = emailArg || 'test@example.com';
   const plan = planArg || 'free';
   const credits = Number.isFinite(Number(creditsArg)) ? Number(creditsArg) : 100;
   const environment = envArg === 'test' ? 'test' : 'live';
+  const source = sourceArg === 'rapidapi' ? 'rapidapi' : 'direct';
 
   try {
     // Create or fetch the user
@@ -36,7 +37,7 @@ async function createTestApiKey() {
     console.log(`✅ User ready: ${user.email}`);
 
     // Create an API key for the user
-    const apiKey = await createApiKey(user.id, plan, credits, { environment });
+    const apiKey = await createApiKey(user.id, plan, credits, { environment, source });
 
     console.log('\n🔑 API Key Generated:');
     console.log('-----------------------------------');

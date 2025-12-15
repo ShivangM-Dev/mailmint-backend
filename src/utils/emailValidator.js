@@ -19,7 +19,7 @@ function validateSyntax(email) {
 
   // Comprehensive email regex pattern
   // Matches: user@domain.com, user.name@sub.domain.com, user+tag@domain.co.uk
-  const emailRegex = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
   
   return emailRegex.test(email);
 }

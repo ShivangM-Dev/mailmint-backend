@@ -33,10 +33,21 @@ The server will start on `http://localhost:8000`
 
 ### Environment Variables
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the `backend` directory:
 
+Required:
 ```env
+DATABASE_URL=postgres://user:password@host:5432/dbname
 PORT=8000
+```
+
+Optional hardening knobs:
+```env
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=60
+REQUEST_TIMEOUT_MS=10000
+SERVER_TIMEOUT_MS=15000
+SKIP_DB_CHECK=false
 ```
 
 ## API Endpoints
@@ -116,12 +127,15 @@ backend/
 │   ├── utils/
 │   │   ├── disposableDomains.js    # Disposable domain detection with caching
 │   │   └── emailValidator.js       # Email syntax and DNS validation
+│   ├── app.js                      # Express app (middleware, routes)
 │   └── server.js                   # Express server entry point
 ├── .env                            # Environment variables (gitignored)
 ├── .gitignore
 ├── package.json
 ├── pnpm-lock.yaml
 ├── README.md
+├── CLIENT_GUIDE.md                 # Client-facing usage (RapidAPI ready)
+├── DEVELOPER_GUIDE.md              # Internal/developer guide
 └── WARP.md
 ```
 
@@ -170,9 +184,19 @@ backend/
 
 ## Development
 
+### Run Migrations
+```bash
+pnpm install
+node src/scripts/migrate.js
+```
+
+### Create a test API key
+```bash
+node src/scripts/createTestApiKey.js
+```
+
 ### Run Tests
 ```bash
-# Tests not yet implemented
 pnpm test
 ```
 
@@ -209,9 +233,7 @@ These emails represent shared mailboxes rather than individual users.
 ## Future Enhancements
 
 - [ ] SMTP verification (mailbox existence check)
-- [ ] Rate limiting
-- [ ] API key authentication
-- [ ] Usage analytics
+- [ ] Usage analytics dashboard
 - [ ] Bulk validation endpoint
 
 ## License
