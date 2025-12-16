@@ -109,6 +109,70 @@ app.get('/health', (req, res) => {
   });
 });
 
+// RapidAPI webhook endpoint for subscription events
+// Note: This endpoint should be protected by RapidAPI's webhook secret or IP whitelist
+app.post('/webhooks/rapidapi', express.json(), async (req, res) => {
+  try {
+    const { handleSubscriptionWebhook } = require('./services/rapidapiWebhookService');
+    
+    // Optional: Verify webhook signature if RapidAPI provides one
+    const webhookSecret = process.env.RAPIDAPI_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const signature = req.headers['x-rapidapi-signature'] || req.headers['x-webhook-signature'];
+      // TODO: Add signature verification logic here when RapidAPI provides signature format
+      // For now, you can protect this endpoint via:
+      // 1. IP whitelist (configure in RapidAPI dashboard)
+      // 2. Additional secret header check
+      // 3. Firewall rules
+    }
+    
+    // Log webhook receipt for debugging
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        msg: 'webhook_received',
+        requestId: req.requestId,
+        event: req.body.event || req.body.type,
+        rapidapi_user_id: req.body.user?.id || req.body.userId
+      })
+    );
+
+    const result = await handleSubscriptionWebhook(req.body);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        message: result.message || 'Webhook processed successfully',
+        data: {
+          userId: result.userId,
+          apiKey: result.apiKey,
+          plan: result.plan,
+          credits: result.credits
+        }
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error || 'Failed to process webhook'
+      });
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        msg: 'webhook_error',
+        requestId: req.requestId,
+        error: error.message,
+        stack: error.stack
+      })
+    );
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error processing webhook'
+    });
+  }
+});
+
 // Main validation endpoint (protected by API key)
 app.post('/api/v1/validate', apiKeyAuth, async (req, res) => {
   try {
